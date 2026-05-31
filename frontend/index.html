@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ĐKHP Phân tán — PTIT</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+        crossorigin="anonymous" />
+  <link rel="stylesheet" href="/css/main.css" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            siteA: '#3b82f6',
+            siteB: '#10b981',
+            siteC: '#8b5cf6',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen font-sans">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon"><i class="fas fa-database"></i></div>
+      <div>
+        <div class="logo-title">ĐKHP Phân tán</div>
+        <div class="logo-sub">CSDLPT — PTIT 2024</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Chính</div>
+      <a href="#dashboard"    class="nav-item" data-page="dashboard">
+        <i class="fas fa-gauge-high"></i><span>Tổng quan</span>
+      </a>
+      <a href="#courses"      class="nav-item" data-page="courses">
+        <i class="fas fa-book-open"></i><span>Lớp học phần</span>
+      </a>
+      <a href="#registration" class="nav-item" data-page="registration">
+        <i class="fas fa-user-pen"></i><span>Đăng ký học phần</span>
+      </a>
+      <a href="#schedule"     class="nav-item" data-page="schedule">
+        <i class="fas fa-calendar-week"></i><span>Thời khoá biểu</span>
+      </a>
+
+      <div class="nav-section-label" style="margin-top:16px">Phân tích</div>
+      <a href="#stats"        class="nav-item" data-page="stats">
+        <i class="fas fa-chart-column"></i><span>Thống kê phân tán</span>
+      </a>
+
+      <div class="nav-section-label" style="margin-top:16px">Hệ thống</div>
+      <a href="#admin"        class="nav-item" data-page="admin">
+        <i class="fas fa-server"></i><span>Quản trị & Demo</span>
+      </a>
+    </nav>
+
+    <!-- Site status indicators -->
+    <div class="sidebar-footer">
+      <div class="site-status-label">Trạng thái kết nối</div>
+      <div class="site-status-row">
+        <span id="dot-A" class="status-dot dot-unknown"></span>
+        <span class="site-status-text">Site A — Cơ sở Hà Nội</span>
+      </div>
+      <div class="site-status-row">
+        <span id="dot-B" class="status-dot dot-unknown"></span>
+        <span class="site-status-text">Site B — Cơ sở HCM</span>
+      </div>
+      <div class="site-status-row">
+        <span id="dot-C" class="status-dot dot-unknown"></span>
+        <span class="site-status-text">Site C — Cơ sở Đà Nẵng</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main area ───────────────────────────────────────────── -->
+  <div class="main-wrap">
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="topbar-title" id="page-title">Tổng quan</div>
+      <div class="topbar-right">
+        <div id="global-status" class="global-status"></div>
+        <div class="clock" id="clock"></div>
+      </div>
+    </header>
+
+    <!-- Page content -->
+    <main class="page-content" id="app-content">
+      <div class="flex items-center justify-center h-64 text-slate-400">
+        <div class="text-center">
+          <i class="fas fa-spinner fa-spin text-4xl mb-3"></i>
+          <div>Đang tải dữ liệu...</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ── Toast ───────────────────────────────────────────────── -->
+  <div id="toast-container"></div>
+
+  <!-- ── Loading overlay ────────────────────────────────────── -->
+  <div id="loading-overlay" class="loading-overlay hidden">
+    <div class="loading-box">
+      <div class="loading-spinner"></div>
+      <div class="loading-text" id="loading-text">Đang xử lý...</div>
+    </div>
+  </div>
+
+  <!-- ── Modal ──────────────────────────────────────────────── -->
+  <div id="modal-overlay" class="modal-overlay hidden" onclick="if(event.target===this)window._closeModal()">
+    <div class="modal-box" id="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modal-title"></h3>
+        <button class="modal-close" onclick="window._closeModal()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

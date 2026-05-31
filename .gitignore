@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.local
+logs/*.log
+*.log
+
+# Docker volumes (local)
+pg_data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

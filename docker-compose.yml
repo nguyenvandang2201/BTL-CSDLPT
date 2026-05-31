@@ -1,0 +1,114 @@
+version: '3.9'
+
+services:
+  site_a:
+    image: postgres:16
+    container_name: site_a
+    environment:
+      POSTGRES_DB: campus
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_a:/var/lib/postgresql/data
+    networks:
+      - campus_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d campus"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  site_b:
+    image: postgres:16
+    container_name: site_b
+    environment:
+      POSTGRES_DB: campus
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg_b:/var/lib/postgresql/data
+    networks:
+      - campus_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d campus"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  site_c:
+    image: postgres:16
+    container_name: site_c
+    environment:
+      POSTGRES_DB: campus
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - pg_c:/var/lib/postgresql/data
+    networks:
+      - campus_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d campus"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: backend
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      SITE_A_HOST: site_a
+      SITE_A_PORT: 5432
+      SITE_A_DB: campus
+      SITE_A_USER: postgres
+      SITE_A_PASSWORD: postgres
+      SITE_B_HOST: site_b
+      SITE_B_PORT: 5432
+      SITE_B_DB: campus
+      SITE_B_USER: postgres
+      SITE_B_PASSWORD: postgres
+      SITE_C_HOST: site_c
+      SITE_C_PORT: 5432
+      SITE_C_DB: campus
+      SITE_C_USER: postgres
+      SITE_C_PASSWORD: postgres
+    depends_on:
+      site_a:
+        condition: service_healthy
+      site_b:
+        condition: service_healthy
+      site_c:
+        condition: service_healthy
+    networks:
+      - campus_net
+    restart: on-failure
+
+  frontend:
+    image: nginx:alpine
+    container_name: frontend
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    networks:
+      - campus_net
+
+volumes:
+  pg_a: {}
+  pg_b: {}
+  pg_c: {}
+
+networks:
+  campus_net:
+    driver: bridge

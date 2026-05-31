@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"c:/Users/Admin/BTL-CSDLPT-PTIT/backend/src/services\" \"c:/Users/Admin/BTL-CSDLPT-PTIT/backend/src/routes\" \"c:/Users/Admin/BTL-CSDLPT-PTIT/db\" \"c:/Users/Admin/BTL-CSDLPT-PTIT/frontend/pages\" \"c:/Users/Admin/BTL-CSDLPT-PTIT/frontend/js\" \"c:/Users/Admin/BTL-CSDLPT-PTIT/frontend/css\" \"c:/Users/Admin/BTL-CSDLPT-PTIT/docs\" \"c:/Users/Admin/BTL-CSDLPT-PTIT/logs\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Admin\\BTL-CSDLPT-PTIT\\backend\\src"
+    ]
+  }
+}
