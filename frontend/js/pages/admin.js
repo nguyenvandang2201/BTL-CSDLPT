@@ -101,16 +101,12 @@ export function render() {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
           <div>
             <label class="form-label">Mã lớp</label>
-            <input class="form-input" id="demo-malop" placeholder="VD: L_A_001" value="L_A_001" />
+            <input class="form-input" id="demo-malop" placeholder="VD: L_A_001" />
           </div>
           <div>
             <label class="form-label">Số lượng SV</label>
-            <input class="form-input" type="number" id="demo-so-luong" value="30" min="1" max="100" />
+            <input class="form-input" type="number" id="demo-so-luong" value="20" min="1" max="100" />
           </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-          <input type="checkbox" id="demo-use-lock" checked style="width:16px;height:16px" />
-          <label for="demo-use-lock" style="font-size:13px">Dùng SELECT FOR UPDATE (có khóa)</label>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-primary" id="btn-demo-lock">
@@ -305,26 +301,47 @@ async function phanCongGV() {
 
 async function runDemoDongThoi(useLock) {
   const maLop   = document.getElementById('demo-malop').value.trim();
-  const soLuong = parseInt(document.getElementById('demo-so-luong').value) || 30;
+  const soLuong = parseInt(document.getElementById('demo-so-luong').value) || 20;
   const resEl   = document.getElementById('demo-result');
   if (!maLop) { toast('Nhập mã lớp để demo', 'warn'); return; }
 
-  resEl.innerHTML = `<div class="demo-result"><span class="demo-info">▶ Đang chạy demo ${soLuong} requests đồng thời (${useLock?'CÓ':'KHÔNG'} khóa)...</span></div>`;
+  resEl.innerHTML = `<div class="demo-result"><span class="demo-info">▶ Đang lấy dữ liệu từ DB và chạy ${soLuong} requests đồng thời (${useLock ? 'CÓ' : 'KHÔNG'} khóa)...</span></div>`;
   try {
-    const start = Date.now();
     const res = await api.demoDongThoi(maLop, soLuong, useLock);
-    const elapsed = Date.now() - start;
+    const kq = res.ketQua || {};
+    const kt = res.kiemTra || {};
+    const thatBai = (kq.hetCho || 0) + (kq.trungLich || 0) + (kq.daDangKy || 0) + (kq.loi || 0);
+    const isOverbook = kt.tinhTrang === 'QUA_CHO';
+
+    const svMauHtml = res.svMau?.length
+      ? `<div class="demo-info">── SV thật lấy từ DB ──</div>
+         <div style="color:#94a3b8;font-size:11px">${res.svMau.join(', ')}${res.soLuong > 5 ? ` ... (+${res.soLuong - 5} SV khác)` : ''}</div>`
+      : '';
+
+    const soLuongNote = res.soLuong < res.soLuongYeuCau
+      ? `<div style="color:#fbbf24">⚠ Chỉ tìm được ${res.soLuong}/${res.soLuongYeuCau} SV trong DB</div>`
+      : `<div class="demo-info">SV tham gia: ${res.soLuong} | Chỗ trống lúc bắt đầu: ${res.choTrong}</div>`;
+
     resEl.innerHTML = `<div class="demo-result">
-      <div class="demo-info">── Kết quả demo (${elapsed}ms) ──</div>
-      <div class="demo-ok">✓ Thành công: ${res.thanhCong ?? res.ok ?? '?'}</div>
-      <div class="demo-err">✗ Thất bại: ${res.thatBai ?? res.failed ?? '?'}</div>
-      <div class="demo-info">── Lý do thất bại ──</div>
-      ${Object.entries(res.lyDo || res.reasons || {}).map(([r,n])=>`<div style="color:#fbbf24">${r}: ${n}</div>`).join('')}
-      ${res.siSoToiDa ? `<div class="demo-info">── Sĩ số tối đa: ${res.siSoToiDa} ──</div>` : ''}
-      <div class="demo-info">${useLock ? '🔒 SELECT FOR UPDATE ngăn over-booking thành công' : '⚠️ Không có khóa — có thể over-book!'}</div>
+      <div class="demo-info">── Kết quả demo (${res.thoiGian}) ──</div>
+      ${soLuongNote}
+      ${svMauHtml}
+      <div class="demo-ok">✓ Thành công: ${kq.thanhCong ?? '?'}</div>
+      <div class="demo-err">✗ Thất bại: ${thatBai}</div>
+      ${thatBai > 0 ? `<div class="demo-info">── Lý do thất bại ──</div>` : ''}
+      ${kq.hetCho    ? `<div style="color:#fbbf24">  HET_CHO: ${kq.hetCho}</div>` : ''}
+      ${kq.trungLich ? `<div style="color:#fbbf24">  TRUNG_LICH: ${kq.trungLich}</div>` : ''}
+      ${kq.daDangKy  ? `<div style="color:#fbbf24">  DA_DANG_KY: ${kq.daDangKy}</div>` : ''}
+      ${kq.loi       ? `<div style="color:#fbbf24">  LOI: ${kq.loi}</div>` : ''}
+      ${kt.soChoToiDa != null ? `
+      <div class="demo-info">── Kiểm tra sĩ số trên DB ──</div>
+      <div class="${isOverbook ? 'demo-err' : 'demo-ok'}">
+        Tối đa: ${kt.soChoToiDa} | SoDaDangKy: ${kt.soDaDangKy} | Bản ghi thực: ${kt.soThucTe} | ${isOverbook ? '⚠ OVER-BOOK!' : '✓ Đúng'}
+      </div>` : ''}
+      <div class="demo-info">${useLock ? '🔒 SELECT FOR UPDATE ngăn over-booking thành công' : '⚠ Không có khóa — kiểm tra OVER-BOOK ở trên'}</div>
     </div>`;
   } catch (err) {
-    resEl.innerHTML = `<div class="demo-result"><span class="demo-err">✗ Lỗi: ${err.message}</span></div>`;
+    resEl.innerHTML = `<div class="demo-result"><span class="demo-err">✗ ${err.message}</span></div>`;
   }
 }
 

@@ -25,15 +25,16 @@ async function ghiNhatKy({ pool, maSV, maLop, hanhDong, ketQua, siteXuLy, ghiChu
 }
 
 // Đăng ký học phần — luồng đầy đủ với kiểm tra trùng lịch + SELECT FOR UPDATE
-async function dangKy(maSV, maLop, useLock = true) {
+// skipConflict = true khi gọi từ demo (chỉ test cơ chế lock, không test conflict detection)
+async function dangKy(maSV, maLop, useLock = true, skipConflict = false) {
   const found = await findSiteByLop(maLop);
   if (!found) return { success: false, reason: 'LOP_KHONG_TON_TAI' };
 
   const { pool, site } = found;
 
   // [1] Kiểm tra trùng lịch SV qua FDW — TRƯỚC khi mở transaction
-  const conflict = await checkSVScheduleConflict(maSV, maLop);
-  if (conflict.hasConflict) {
+  const conflict = !skipConflict && await checkSVScheduleConflict(maSV, maLop);
+  if (conflict && conflict.hasConflict) {
     await ghiNhatKy({
       pool, maSV, maLop, hanhDong: 'DANG_KY',
       ketQua: 'TRUNG_LICH', siteXuLy: site,
@@ -60,7 +61,7 @@ async function dangKy(maSV, maLop, useLock = true) {
     const { sisotoida, sodadangky } = rows[0];
     if (parseInt(sodadangky) >= parseInt(sisotoida)) {
       await client.query('ROLLBACK');
-      await ghiNhatKy({ pool, maSV, maLop, hanhDong: 'DANG_KY', ketQua: 'HET_CHO', siteXuLy: site });
+      await ghiNhatKy({ pool: client, maSV, maLop, hanhDong: 'DANG_KY', ketQua: 'HET_CHO', siteXuLy: site });
       return { success: false, reason: 'HET_CHO' };
     }
 
@@ -72,7 +73,7 @@ async function dangKy(maSV, maLop, useLock = true) {
     await client.query('COMMIT');
 
     await ghiNhatKy({
-      pool, maSV, maLop, hanhDong: 'DANG_KY',
+      pool: client, maSV, maLop, hanhDong: 'DANG_KY',
       ketQua: 'THANH_CONG', siteXuLy: site,
       ghiChu: useLock ? 'co_khoa' : 'khong_khoa',
     });
@@ -106,7 +107,7 @@ async function huyDangKy(maDK, maSV) {
         [rows[0].malop]
       );
       await client.query('COMMIT');
-      await ghiNhatKy({ pool, maSV, maLop: rows[0].malop, hanhDong: 'HUY_DANG_KY', ketQua: 'THANH_CONG', siteXuLy: site });
+      await ghiNhatKy({ pool: client, maSV, maLop: rows[0].malop, hanhDong: 'HUY_DANG_KY', ketQua: 'THANH_CONG', siteXuLy: site });
       return { success: true };
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});
@@ -134,48 +135,106 @@ async function getDangKySV(maSV, { coordinator }) {
   return rows;
 }
 
-// Demo đồng thời — reset lớp rồi gửi soLuong request cùng lúc
+// Demo đồng thời — dùng SV thật từ DB, chỉ reset bản ghi của SV tham gia demo
 async function demoDongThoi(maLop, soLuong = 30, useLock = true) {
   const found = await findSiteByLop(maLop);
-  if (!found) return { error: 'Lop khong ton tai' };
+  if (!found) return { error: 'Lớp không tồn tại trong hệ thống' };
 
-  await found.pool.query('UPDATE LopHocPhan SET SoDaDangKy=0 WHERE MaLop=$1', [maLop]);
-  await found.pool.query('DELETE FROM DangKy WHERE MaLop=$1', [maLop]);
+  const { pool: lopPool, site: lopSite } = found;
 
-  const svList = Array.from({ length: soLuong }, (_, i) =>
-    `DEMO_SV_${String(i + 1).padStart(3, '0')}`
+  // Lấy thông tin lớp từ DB thực
+  const { rows: lopRows } = await lopPool.query(
+    'SELECT SiSoToiDa, SoDaDangKy FROM LopHocPhan WHERE MaLop=$1', [maLop]
+  );
+  if (!lopRows.length) return { error: 'Lớp không tồn tại' };
+
+  // Thu thập sinh viên THẬT từ tất cả site (ưu tiên site chứa lớp, không break sớm)
+  const orderedEntries = [
+    [lopSite, lopPool],
+    ...Object.entries(pools).filter(([s]) => s !== lopSite),
+  ];
+  const svSet = new Set();
+  for (const [, pool] of orderedEntries) {
+    try {
+      const { rows } = await pool.query(
+        'SELECT MaSV FROM SinhVien ORDER BY MaSV LIMIT $1',
+        [soLuong * 3]
+      );
+      rows.forEach(r => svSet.add(r.masv));
+    } catch (_) {}
+  }
+
+  if (svSet.size === 0) {
+    return { error: 'Không tìm thấy sinh viên nào trong cơ sở dữ liệu để chạy demo' };
+  }
+
+  const svList = [...svSet].slice(0, soLuong);
+
+  // Xóa bản ghi cũ của CÁC SV DEMO nếu có (giữ nguyên SV khác)
+  await lopPool.query(
+    'DELETE FROM DangKy WHERE MaLop=$1 AND MaSV = ANY($2::text[])',
+    [maLop, svList]
   );
 
+  // Tính lại SoDaDangKy từ bản ghi thực còn lại
+  const { rows: countRows } = await lopPool.query(
+    "SELECT COUNT(*) AS cnt FROM DangKy WHERE MaLop=$1 AND TrangThai='DangKy'",
+    [maLop]
+  );
+  const soDangKyHienTai = parseInt(countRows[0].cnt);
+  await lopPool.query(
+    'UPDATE LopHocPhan SET SoDaDangKy=$1 WHERE MaLop=$2',
+    [soDangKyHienTai, maLop]
+  );
+
+  const siSoToiDa = parseInt(lopRows[0].sisotoida);
+  const choTrong = siSoToiDa - soDangKyHienTai;
+  if (choTrong <= 0) {
+    return {
+      error: `Lớp ${maLop} đã đầy chỗ (${soDangKyHienTai}/${siSoToiDa}). Hãy chọn lớp khác hoặc hủy bớt đăng ký trước.`,
+    };
+  }
+
+  // Chạy N request đồng thời trên DB thực (bỏ qua conflict check — demo chỉ test cơ chế lock)
   const t0 = Date.now();
   const results = await Promise.allSettled(
-    svList.map(maSV => dangKy(maSV, maLop, useLock))
+    svList.map(maSV => dangKy(maSV, maLop, useLock, true))
   );
   const elapsed = Date.now() - t0;
 
-  const stats = { thanhCong: 0, hetCho: 0, trungLich: 0, loi: 0 };
+  const stats = { thanhCong: 0, hetCho: 0, trungLich: 0, daDangKy: 0, loi: 0 };
   results.forEach(r => {
-    if (r.status === 'rejected')              { stats.loi++;        return; }
-    if (r.value.success)                       stats.thanhCong++;
-    else if (r.value.reason === 'HET_CHO')     stats.hetCho++;
-    else if (r.value.reason === 'TRUNG_LICH')  stats.trungLich++;
-    else                                        stats.loi++;
+    if (r.status === 'rejected')                  { stats.loi++;       return; }
+    if (r.value.success)                           stats.thanhCong++;
+    else if (r.value.reason === 'HET_CHO')         stats.hetCho++;
+    else if (r.value.reason === 'TRUNG_LICH')      stats.trungLich++;
+    else if (r.value.reason === 'DA_DANG_KY')      stats.daDangKy++;
+    else                                            stats.loi++;
   });
 
-  const { rows } = await found.pool.query(
+  const { rows: dbRows } = await lopPool.query(
     `SELECT SiSoToiDa, SoDaDangKy,
        (SELECT COUNT(*) FROM DangKy WHERE MaLop=$1 AND TrangThai='DangKy') AS count_actual
      FROM LopHocPhan WHERE MaLop=$1`,
     [maLop]
   );
-  const db = rows[0];
+  const db = dbRows[0];
+
   return {
-    maLop, soLuong, useLock, thoiGian: `${elapsed}ms`, ketQua: stats,
+    maLop,
+    soLuong: svList.length,
+    soLuongYeuCau: soLuong,
+    choTrong,
+    useLock,
+    thoiGian: `${elapsed}ms`,
+    ketQua: stats,
     kiemTra: {
       soChoToiDa: parseInt(db.sisotoida),
       soDaDangKy: parseInt(db.sodadangky),
       soThucTe:   parseInt(db.count_actual),
       tinhTrang:  parseInt(db.count_actual) > parseInt(db.sisotoida) ? 'QUA_CHO' : 'DUNG',
     },
+    svMau: svList.slice(0, 5),
   };
 }
 

@@ -9,7 +9,7 @@ function makePool(prefix) {
     database: process.env[`${prefix}_DB`]       || 'campus',
     user:     process.env[`${prefix}_USER`]     || 'postgres',
     password: process.env[`${prefix}_PASSWORD`] || 'postgres',
-    max: 10,
+    max: 50,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
   });
